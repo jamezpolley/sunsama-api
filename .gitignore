@@ -119,3 +119,4 @@ Thumbs.db
 
 # Integration test session token (written by globalSetup, deleted by teardown)
 .integration-session.tmp
+package-lock.json
