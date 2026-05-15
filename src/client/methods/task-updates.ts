@@ -4,6 +4,7 @@
 
 import { SunsamaAuthError } from '../../errors/index.js';
 import {
+  SCHEDULE_TASK_ACTUAL_TIME_MUTATION,
   UPDATE_TASK_DUE_DATE_MUTATION,
   UPDATE_TASK_NOTES_MUTATION,
   UPDATE_TASK_PLANNED_TIME_MUTATION,
@@ -14,6 +15,7 @@ import {
 import type {
   CollabSnapshot,
   GraphQLRequest,
+  ScheduleTaskActualTimeInput,
   TaskNotesContent,
   UpdateTaskDueDateInput,
   UpdateTaskNotesInput,
@@ -460,5 +462,72 @@ export abstract class TaskUpdateMethods extends TaskLifecycleMethods {
     }
 
     return (response.data as { updateTaskStream: UpdateTaskPayload }).updateTaskStream;
+  }
+
+  /**
+   * Insert or replace a single actualTime entry on a task.
+   *
+   * Sunsama's web UI uses one mutation (`scheduleTaskActualTime`) for both
+   * "add new entry" and "edit existing entry". The `originalStartDate`/
+   * `originalEndDate` matchers identify which entry is being replaced; for a
+   * fresh insert pass the same values as `startDate`/`endDate`.
+   *
+   * `userId` and `timezone` default to the authenticated user's values
+   * (fetched via getUser if not already cached).
+   *
+   * @example
+   * ```ts
+   * // Record a 30-minute call that happened from 13:55 local time.
+   * const start = new Date('2026-05-15T13:55:00+10:00');
+   * const end   = new Date('2026-05-15T14:25:00+10:00');
+   * await client.scheduleTaskActualTime('6a06a47077398a0001de0262', start, end);
+   * ```
+   */
+  async scheduleTaskActualTime(
+    taskId: string,
+    startDate: Date | string,
+    endDate: Date | string,
+    options: {
+      originalStartDate?: Date | string;
+      originalEndDate?: Date | string;
+      userId?: string;
+      timezone?: string;
+      limitResponsePayload?: boolean;
+    } = {}
+  ): Promise<UpdateTaskPayload> {
+    const toIso = (v: Date | string) => (typeof v === 'string' ? v : v.toISOString());
+
+    let { userId, timezone } = options;
+    if (!userId || !timezone) {
+      const user = await (
+        this as unknown as { getUser: () => Promise<{ _id: string; timezone?: string }> }
+      ).getUser();
+      userId = userId ?? user._id;
+      timezone = timezone ?? user.timezone ?? 'UTC';
+    }
+
+    const startIso = toIso(startDate);
+    const endIso = toIso(endDate);
+
+    const input: ScheduleTaskActualTimeInput = {
+      taskId,
+      startDate: startIso,
+      endDate: endIso,
+      originalStartDate: options.originalStartDate ? toIso(options.originalStartDate) : startIso,
+      originalEndDate: options.originalEndDate ? toIso(options.originalEndDate) : endIso,
+      userId,
+      timezone,
+      limitResponsePayload: options.limitResponsePayload ?? true,
+    };
+
+    const request: GraphQLRequest = {
+      operationName: 'scheduleTaskActualTime',
+      variables: { input },
+      query: SCHEDULE_TASK_ACTUAL_TIME_MUTATION,
+    };
+
+    const response = await this.graphqlRequest(request);
+    if (!response.data) throw new SunsamaAuthError('No response data received');
+    return (response.data as { scheduleTaskActualTime: UpdateTaskPayload }).scheduleTaskActualTime;
   }
 }

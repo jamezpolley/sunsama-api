@@ -1424,6 +1424,30 @@ export interface UpdateTaskPlannedTimeInput {
 }
 
 /**
+ * Input for the scheduleTaskActualTime mutation — insert/replace a single
+ * actualTime entry on a task. The Sunsama web UI uses this for both adding
+ * and editing entries; the originalStart/End fields identify the entry being
+ * replaced (or are echoed back unchanged for an insert).
+ */
+export interface ScheduleTaskActualTimeInput {
+  taskId: string;
+  /** ISO-8601 UTC start of the new actualTime entry. */
+  startDate: string;
+  /** ISO-8601 UTC end of the new actualTime entry. */
+  endDate: string;
+  /** ISO-8601 UTC start of the existing entry being replaced; for a fresh insert pass the same value as startDate. */
+  originalStartDate: string;
+  /** ISO-8601 UTC end of the existing entry being replaced; for a fresh insert pass the same value as endDate. */
+  originalEndDate: string;
+  /** The user the entry belongs to (currentUser._id). */
+  userId: string;
+  /** IANA timezone (e.g. "Australia/Brisbane"). */
+  timezone: string;
+  /** Optional: when true the server returns null for updatedTask/updatedFields. */
+  limitResponsePayload?: boolean;
+}
+
+/**
  * Input for updateTaskDueDate mutation
  */
 export interface UpdateTaskDueDateInput {

@@ -122,6 +122,30 @@ export const UPDATE_TASK_PLANNED_TIME_MUTATION = gql`
 `;
 
 /**
+ * Mutation for inserting or replacing a single actualTime entry on a task.
+ *
+ * Variables (ScheduleTaskActualTimeInput):
+ * - input.taskId
+ * - input.startDate / input.endDate: ISO-8601 UTC timestamps for the entry
+ * - input.originalStartDate / input.originalEndDate: ISO-8601 UTC matchers used
+ *   when REPLACING an existing entry. For a fresh insert, the Sunsama web UI
+ *   passes whatever the prefilled draft values were (typically "now" through
+ *   "now + timeEstimate"); the server appears to upsert based on user + range.
+ * - input.userId: the user's Sunsama _id (currentUser._id)
+ * - input.timezone: IANA timezone (e.g. "Australia/Brisbane")
+ * - input.limitResponsePayload (optional)
+ */
+export const SCHEDULE_TASK_ACTUAL_TIME_MUTATION = gql`
+  mutation scheduleTaskActualTime($input: ScheduleTaskActualTimeInput!) {
+    scheduleTaskActualTime(input: $input) {
+      ...UpdateTaskPayload
+      __typename
+    }
+  }
+  ${UPDATE_TASK_PAYLOAD_FRAGMENT}
+`;
+
+/**
  * Mutation for updating task snooze date
  *
  * Variables:
