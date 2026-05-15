@@ -804,6 +804,36 @@ export interface TaskGmailIntegration extends BaseTaskIntegration {
 }
 
 /**
+ * Slack integration for tasks. The Sunsama Slack app populates this when a
+ * user uses "Send to Sunsama" on a Slack message; the server also accepts
+ * this shape via createTaskV2 so tasks can be created with the native badge.
+ */
+export interface TaskSlackIntegration extends BaseTaskIntegration {
+  service: 'slack';
+  identifier: {
+    permalink: string;
+    notesMarkdown: string | null;
+    __typename: 'TaskSlackIntegrationIdentifier';
+  };
+  __typename: 'TaskSlackIntegration';
+}
+
+/**
+ * Todoist integration for tasks. Sunsama's Todoist sync writes this shape;
+ * the server accepts it on createTaskV2 too.
+ */
+export interface TaskTodoistIntegration extends BaseTaskIntegration {
+  service: 'todoist';
+  identifier: {
+    id: string;
+    url: string;
+    deepUrl: string;
+    __typename: 'TaskTodoistIntegrationIdentifier';
+  };
+  __typename: 'TaskTodoistIntegration';
+}
+
+/**
  * Union type for all task integrations
  */
 export type TaskIntegration =
@@ -811,7 +841,9 @@ export type TaskIntegration =
   | TaskGoogleCalendarIntegration
   | TaskLinearIntegration
   | TaskGithubIntegration
-  | TaskGmailIntegration;
+  | TaskGmailIntegration
+  | TaskSlackIntegration
+  | TaskTodoistIntegration;
 
 /**
  * Main Task structure

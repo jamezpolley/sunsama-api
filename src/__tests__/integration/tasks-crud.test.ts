@@ -52,6 +52,40 @@ describe.skipIf(!hasCredentials())('Task CRUD Operations (Integration)', () => {
       expect(task!.timeEstimate).toBe(30);
     });
 
+    it('should create a task with a Slack integration that round-trips', async () => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const taskId = SunsamaClient.generateTaskId();
+      trackTaskForCleanup(taskId);
+
+      // A synthetic permalink — Sunsama doesn't validate it server-side.
+      const permalink = `https://example.slack.com/archives/C0TEST/p${Date.now()}000000`;
+
+      const result = await client.createTask(`Test Slack Integration - ${timestamp}`, {
+        taskId,
+        integration: {
+          service: 'slack',
+          identifier: {
+            permalink,
+            notesMarkdown: null,
+            __typename: 'TaskSlackIntegrationIdentifier',
+          },
+          __typename: 'TaskSlackIntegration',
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeNull();
+
+      const task = await client.getTaskById(taskId);
+      expect(task).not.toBeNull();
+      expect(task!.integration).not.toBeNull();
+      expect(task!.integration!.service).toBe('slack');
+      // Narrow via the discriminant to access permalink.
+      if (task!.integration!.service === 'slack') {
+        expect(task!.integration!.identifier.permalink).toBe(permalink);
+      }
+    });
+
     it('should generate unique task IDs', () => {
       const id1 = SunsamaClient.generateTaskId();
       const id2 = SunsamaClient.generateTaskId();

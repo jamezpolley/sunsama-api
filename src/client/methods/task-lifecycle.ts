@@ -30,6 +30,33 @@ import {
 } from '../../utils/index.js';
 import { SunsamaClientBase } from '../base.js';
 import { UserMethods } from './user.js';
+import type { TaskIntegration } from '../../types/api.js';
+
+/**
+ * Sunsama's TaskIntegrationInput does not accept the GraphQL `__typename`
+ * field, but reads of TaskIntegration always include it. Callers commonly
+ * round-trip an integration object that came from a read response (or copy
+ * one from the JSDoc examples that include __typename for documentation
+ * symmetry). Strip the __typename keys so createTask() works either way.
+ */
+function stripIntegrationTypenames(
+  integration: TaskIntegration | null | undefined
+): TaskIntegration | null {
+  if (!integration) return null;
+  // Shallow-clone and delete __typename at both levels. Avoids destructure-
+  // and-ignore which trips @typescript-eslint/no-unused-vars even with an
+  // underscore prefix in this repo's config.
+  const cloned: Record<string, unknown> = { ...(integration as Record<string, unknown>) };
+  delete cloned.__typename;
+  if (cloned.identifier && typeof cloned.identifier === 'object') {
+    const identifier: Record<string, unknown> = {
+      ...(cloned.identifier as Record<string, unknown>),
+    };
+    delete identifier.__typename;
+    cloned.identifier = identifier;
+  }
+  return cloned as TaskIntegration;
+}
 
 export abstract class TaskLifecycleMethods extends UserMethods {
   /**
@@ -248,6 +275,35 @@ export abstract class TaskLifecycleMethods extends UserMethods {
    *   },
    *   timeEstimate: 15
    * });
+   *
+   * // Create a task from a Slack message
+   * const result = await client.createTask('Follow up on Ian\'s spec work', {
+   *   integration: {
+   *     service: 'slack',
+   *     identifier: {
+   *       permalink: 'https://yourorg.slack.com/archives/C0123/p1700000000000000',
+   *       notesMarkdown: null,
+   *       __typename: 'TaskSlackIntegrationIdentifier'
+   *     },
+   *     __typename: 'TaskSlackIntegration'
+   *   },
+   *   timeEstimate: 15
+   * });
+   *
+   * // Create a task from a Todoist task
+   * const result = await client.createTask('Reply to Niki re BAS', {
+   *   integration: {
+   *     service: 'todoist',
+   *     identifier: {
+   *       id: '6gcFRH8XmqxPvv2j',
+   *       url: 'https://app.todoist.com/app/task/6gcFRH8XmqxPvv2j',
+   *       deepUrl: 'todoist://task?id=6gcFRH8XmqxPvv2j',
+   *       __typename: 'TaskTodoistIntegrationIdentifier'
+   *     },
+   *     __typename: 'TaskTodoistIntegration'
+   *   },
+   *   timeEstimate: 10
+   * });
    * ```
    */
   async createTask(text: string, options?: CreateTaskOptions): Promise<CreateTaskPayload> {
@@ -304,7 +360,7 @@ export abstract class TaskLifecycleMethods extends UserMethods {
       private: options?.private || false,
       assigneeId: this.userId,
       createdBy: this.userId,
-      integration: options?.integration || null,
+      integration: stripIntegrationTypenames(options?.integration),
       deleted: false,
       text,
       notes: notesHtml,
