@@ -5,6 +5,7 @@
 import { SunsamaAuthError } from '../../errors/index.js';
 import {
   SCHEDULE_TASK_ACTUAL_TIME_MUTATION,
+  UPDATE_TASK_ADD_COMMENT_MUTATION,
   UPDATE_TASK_DUE_DATE_MUTATION,
   UPDATE_TASK_NOTES_MUTATION,
   UPDATE_TASK_PLANNED_TIME_MUTATION,
@@ -13,10 +14,14 @@ import {
   UPDATE_TASK_TEXT_MUTATION,
 } from '../../queries/index.js';
 import type {
+  AddCommentToTaskOptions,
   CollabSnapshot,
   GraphQLRequest,
   ScheduleTaskActualTimeInput,
+  TaskCommentContent,
+  TaskCommentInput,
   TaskNotesContent,
+  UpdateTaskAddCommentInput,
   UpdateTaskDueDateInput,
   UpdateTaskNotesInput,
   UpdateTaskNotesOptions,
@@ -192,16 +197,27 @@ export abstract class TaskUpdateMethods extends TaskLifecycleMethods {
       // Use the provided collaborative snapshot
       collabSnapshot = createUpdatedCollabSnapshot(options.collabSnapshot, notesMarkdown);
     } else {
-      // Fetch the task to get its collaborative snapshot
-      const existingTask = await this.getTaskById(taskId);
+      // Fetch the task to get its collaborative snapshot.
+      // Fresh tasks created via the API don't have a collab document until the server
+      // lazy-initialises one — this happens the first time the task is fetched with
+      // collabSnapshot requested. If the first fetch returns null, retry once after a
+      // short delay to give the server time to finish initialisation.
+      let existingTask = await this.getTaskById(taskId);
 
       if (!existingTask) {
         throw new SunsamaAuthError(`Task with ID ${taskId} not found`);
       }
 
       if (!existingTask.collabSnapshot) {
+        // First fetch may have triggered lazy-init; wait briefly then retry.
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        existingTask = await this.getTaskById(taskId);
+      }
+
+      if (!existingTask || !existingTask.collabSnapshot) {
         throw new SunsamaAuthError(
-          `Task ${taskId} does not have a collaborative snapshot. Cannot update notes for a task without existing collaborative editing state.`
+          `Task ${taskId} does not have a collaborative snapshot. Cannot update notes for a task without existing collaborative editing state. ` +
+          `If this is a freshly-created task, open it in the Sunsama web UI once to bootstrap the collaborative document, then retry.`
         );
       }
 
@@ -529,5 +545,112 @@ export abstract class TaskUpdateMethods extends TaskLifecycleMethods {
     const response = await this.graphqlRequest(request);
     if (!response.data) throw new SunsamaAuthError('No response data received');
     return (response.data as { scheduleTaskActualTime: UpdateTaskPayload }).scheduleTaskActualTime;
+  }
+
+  /**
+   * Adds a comment to a task
+   *
+   * Comments support HTML or Markdown content and do not require a collaborative
+   * snapshot, making this safe to call on freshly-created tasks that have not
+   * yet been opened in the Sunsama UI.
+   *
+   * @param taskId - The ID of the task to add the comment to
+   * @param content - The comment content in either HTML or Markdown format
+   * @param options - Additional options for the operation
+   * @returns The update result with success status
+   * @throws SunsamaAuthError if not authenticated, task not found, or request fails
+   *
+   * @example
+   * ```typescript
+   * // Add a comment with Markdown content
+   * const result = await client.addCommentToTask('taskId123', {
+   *   markdown: 'Follow-up: contacted the vendor'
+   * });
+   *
+   * // Add a comment with HTML content
+   * const result = await client.addCommentToTask('taskId123', {
+   *   html: '<p>Follow-up: contacted the vendor</p>'
+   * });
+   *
+   * // Add a comment with explicit userId and groupId
+   * const result = await client.addCommentToTask('taskId123', {
+   *   markdown: 'Done'
+   * }, { userId: 'user-id-123', groupId: 'group-id-456' });
+   * ```
+   */
+  async addCommentToTask(
+    taskId: string,
+    content: TaskCommentContent,
+    options?: AddCommentToTaskOptions
+  ): Promise<UpdateTaskPayload> {
+    let text: string;
+    let markdown: string;
+
+    if ('html' in content) {
+      text = content.html;
+      markdown = htmlToMarkdown(content.html);
+    } else {
+      markdown = content.markdown;
+      text = markdownToHtml(content.markdown);
+    }
+
+    let { userId, groupId } = options ?? {};
+
+    if (!userId || !groupId) {
+      const [user, task] = await Promise.all([
+        !userId
+          ? (this as unknown as { getUser: () => Promise<{ _id: string }> }).getUser()
+          : Promise.resolve(null),
+        !groupId
+          ? this.getTaskById(taskId)
+          : Promise.resolve(null),
+      ]);
+
+      if (!userId) {
+        if (!user) throw new SunsamaAuthError('Could not resolve authenticated user');
+        userId = user._id;
+      }
+
+      if (!groupId) {
+        if (!task) throw new SunsamaAuthError(`Task with ID ${taskId} not found`);
+        groupId = (task as unknown as { groupId: string }).groupId;
+      }
+    }
+
+    const comment: TaskCommentInput = {
+      userId,
+      text,
+      markdown,
+      editorVersion: 3,
+      groupId,
+      createdAt: options?.createdAt ?? new Date().toISOString(),
+      editedAt: null,
+      deleted: false,
+      file: null,
+      fileMetadata: null,
+    };
+
+    const variables: { input: UpdateTaskAddCommentInput } = {
+      input: {
+        taskId,
+        comment,
+        followers: [],
+        limitResponsePayload: options?.limitResponsePayload ?? true,
+      },
+    };
+
+    const request: GraphQLRequest = {
+      operationName: 'updateTaskAddComment',
+      variables,
+      query: UPDATE_TASK_ADD_COMMENT_MUTATION,
+    };
+
+    const response = await this.graphqlRequest(request);
+
+    if (!response.data) {
+      throw new SunsamaAuthError('No response data received');
+    }
+
+    return (response.data as { updateTaskAddComment: UpdateTaskPayload }).updateTaskAddComment;
   }
 }

@@ -295,6 +295,25 @@ export const UPDATE_TASK_UNCOMPLETE_MUTATION = gql`
 `;
 
 /**
+ * Mutation for adding a comment to a task
+ *
+ * Variables:
+ * - input.taskId: The ID of the task to add the comment to
+ * - input.comment: The comment object with content and metadata
+ * - input.followers: Array of user IDs to notify (typically empty)
+ * - input.limitResponsePayload: Flag to limit response size (optional)
+ */
+export const UPDATE_TASK_ADD_COMMENT_MUTATION = gql`
+  mutation updateTaskAddComment($input: UpdateTaskAddCommentInput!) {
+    updateTaskAddComment(input: $input) {
+      ...UpdateTaskPayload
+      __typename
+    }
+  }
+  ${UPDATE_TASK_PAYLOAD_FRAGMENT}
+`;
+
+/**
  * Mutation for moving/reordering a task within a day panel
  *
  * Variables:

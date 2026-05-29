@@ -1410,6 +1410,80 @@ export interface UpdateTaskNotesInput {
 }
 
 /**
+ * Comment input for updateTaskAddComment mutation
+ */
+export interface TaskCommentInput {
+  /** The ID of the user posting the comment */
+  userId: string;
+
+  /** The comment content in HTML format (ProseMirror output) */
+  text: string;
+
+  /** The comment content in Markdown format */
+  markdown: string;
+
+  /** Editor version (typically 3) */
+  editorVersion: number;
+
+  /** The group ID the task belongs to */
+  groupId: string;
+
+  /** ISO 8601 timestamp when the comment was created */
+  createdAt: string;
+
+  /** ISO 8601 timestamp when the comment was last edited, or null */
+  editedAt: string | null;
+
+  /** Whether the comment is deleted */
+  deleted: boolean;
+
+  /** Attached file reference, or null */
+  file: string | null;
+
+  /** Attached file metadata, or null */
+  fileMetadata: null;
+}
+
+/**
+ * Input for updateTaskAddComment mutation
+ */
+export interface UpdateTaskAddCommentInput {
+  /** The ID of the task to add the comment to */
+  taskId: string;
+
+  /** The comment object */
+  comment: TaskCommentInput;
+
+  /** Array of user IDs to notify (typically empty) */
+  followers: string[];
+
+  /** Flag to limit response payload (returns null for updatedTask and updatedFields when true) */
+  limitResponsePayload?: boolean;
+}
+
+/**
+ * Content type for addCommentToTask - either HTML or Markdown format
+ */
+export type TaskCommentContent = { html: string } | { markdown: string };
+
+/**
+ * Options for addCommentToTask method
+ */
+export interface AddCommentToTaskOptions {
+  /** User ID to attribute the comment to (defaults to authenticated user) */
+  userId?: string;
+
+  /** Group ID for the comment (defaults to fetched from task) */
+  groupId?: string;
+
+  /** ISO 8601 timestamp for comment creation (defaults to now) */
+  createdAt?: string;
+
+  /** Flag to limit response payload (returns null for updatedTask and updatedFields when true) */
+  limitResponsePayload?: boolean;
+}
+
+/**
  * Input for updateTaskPlannedTime mutation
  */
 export interface UpdateTaskPlannedTimeInput {

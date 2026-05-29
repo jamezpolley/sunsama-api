@@ -46,16 +46,16 @@ function stripIntegrationTypenames(
   // Shallow-clone and delete __typename at both levels. Avoids destructure-
   // and-ignore which trips @typescript-eslint/no-unused-vars even with an
   // underscore prefix in this repo's config.
-  const cloned: Record<string, unknown> = { ...(integration as Record<string, unknown>) };
-  delete cloned.__typename;
-  if (cloned.identifier && typeof cloned.identifier === 'object') {
+  const cloned: Record<string, unknown> = { ...(integration as unknown as Record<string, unknown>) };
+  delete cloned['__typename'];
+  if (cloned['identifier'] && typeof cloned['identifier'] === 'object') {
     const identifier: Record<string, unknown> = {
-      ...(cloned.identifier as Record<string, unknown>),
+      ...(cloned['identifier'] as Record<string, unknown>),
     };
-    delete identifier.__typename;
-    cloned.identifier = identifier;
+    delete identifier['__typename'];
+    cloned['identifier'] = identifier;
   }
-  return cloned as TaskIntegration;
+  return cloned as unknown as TaskIntegration;
 }
 
 export abstract class TaskLifecycleMethods extends UserMethods {

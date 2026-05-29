@@ -961,6 +961,38 @@ describe('SunsamaClient', () => {
       ).rejects.toThrow('GraphQL errors: Unauthorized');
     });
 
+    it('should have addCommentToTask method', () => {
+      const client = new SunsamaClient();
+
+      expect(typeof client.addCommentToTask).toBe('function');
+    });
+
+    it('should throw error when calling addCommentToTask without authentication', async () => {
+      const client = new SunsamaClient();
+
+      await expect(
+        client.addCommentToTask('test-task-id', { markdown: 'A comment' })
+      ).rejects.toThrow();
+    });
+
+    it('should accept HTML content in addCommentToTask', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = '685022edbdef77163d659d4a';
+
+      await expect(
+        client.addCommentToTask(validTaskId, { html: '<p>A comment</p>' })
+      ).rejects.toThrow('GraphQL errors: Unauthorized');
+    });
+
+    it('should accept Markdown content in addCommentToTask', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = '685022edbdef77163d659d4a';
+
+      await expect(
+        client.addCommentToTask(validTaskId, { markdown: 'A comment' })
+      ).rejects.toThrow('GraphQL errors: Unauthorized');
+    });
+
     it('should have updateCalendarEvent method', () => {
       const client = new SunsamaClient();
 
