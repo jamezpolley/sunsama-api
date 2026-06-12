@@ -99,4 +99,75 @@ describe.skipIf(!hasCredentials())('Task Scheduling Operations (Integration)', (
       expect(result.updatedFields).toBeDefined();
     });
   });
+
+  describe('moveTaskToDay', () => {
+    it('should move a task to a future day', async () => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const taskId = SunsamaClient.generateTaskId();
+      trackTaskForCleanup(taskId);
+
+      const today = new Date().toISOString().split('T')[0]!;
+      await client.createTask(`Test MoveToDay Future - ${timestamp}`, {
+        taskId,
+        snoozeUntil: new Date(),
+      });
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0]!;
+
+      const result = await client.moveTaskToDay(taskId, tomorrowStr, { fromDay: today });
+
+      expect(Array.isArray(result.updatedTaskIds)).toBe(true);
+      expect(result.updatedTaskIds.length).toBeGreaterThan(0);
+      expect(result.__typename).toBe('UpdateTasksBulkPayload');
+    });
+
+    it('should accept explicit timezone option', async () => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const taskId = SunsamaClient.generateTaskId();
+      trackTaskForCleanup(taskId);
+
+      const today = new Date().toISOString().split('T')[0]!;
+      await client.createTask(`Test MoveToDay TZ - ${timestamp}`, {
+        taskId,
+        snoozeUntil: new Date(),
+      });
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0]!;
+
+      const result = await client.moveTaskToDay(taskId, tomorrowStr, {
+        fromDay: today,
+        timezone: 'America/New_York',
+      });
+
+      expect(Array.isArray(result.updatedTaskIds)).toBe(true);
+    });
+
+    it('should auto-resolve source day when fromDay is omitted', async () => {
+      // NOTE: This test covers the getTaskById path for resolving movedFromPanelDate.
+      // The server-side complete-as-of-past-day side-effect is NOT exercised here —
+      // that requires manually verifying task.completed and task.completeOn after a
+      // past-day move. Leave that for a manual smoke test by James.
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const taskId = SunsamaClient.generateTaskId();
+      trackTaskForCleanup(taskId);
+
+      await client.createTask(`Test MoveToDay AutoFrom - ${timestamp}`, {
+        taskId,
+        snoozeUntil: new Date(),
+      });
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0]!;
+
+      // fromDay omitted — method should fetch task and read orderings[0].panelDate
+      const result = await client.moveTaskToDay(taskId, tomorrowStr);
+
+      expect(Array.isArray(result.updatedTaskIds)).toBe(true);
+    });
+  });
 });

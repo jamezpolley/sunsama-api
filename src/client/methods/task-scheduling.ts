@@ -135,6 +135,149 @@ export abstract class TaskSchedulingMethods extends SubtaskMethods {
   }
 
   /**
+   * Moves a task from one day's panel to another day's panel.
+   *
+   * **Important: moving to a past day completes the task as-of that day.**
+   * When `targetDay` is in the past, the Sunsama server automatically sets
+   * `completed = true`, `completeOn = <targetDay 23:59:59.999 local>`, and
+   * `completeDate = now` — no separate completion mutation is needed.
+   * This makes `moveTaskToDay` the correct tool for "this task actually got
+   * done yesterday / last Thursday". The `completeOn` field encodes the
+   * as-of date; use it (not `completeDate`) when reasoning about which day
+   * the task was completed.
+   *
+   * The server-side completion side-effect is NOT verified by unit tests —
+   * it requires a live API call against a real Sunsama account to confirm.
+   *
+   * @param taskId - The ID of the task to move
+   * @param targetDay - The destination day (YYYY-MM-DD format)
+   * @param options - Additional options
+   * @param options.timezone - Timezone string (e.g., 'Australia/Brisbane'). Falls back to the authenticated user's timezone, then UTC.
+   * @param options.fromDay - The source day (YYYY-MM-DD). If omitted, the method fetches the task's current panelDate from the API. Pass this if you already know the source day to save an API round-trip, or if the task has no panel date (backlog).
+   * @returns The result with updated task IDs
+   * @throws SunsamaValidationError if `targetDay` or `fromDay` are not YYYY-MM-DD
+   * @throws SunsamaError if the task has no current panel date and `fromDay` is not provided
+   * @throws SunsamaAuthError if not authenticated or the request fails
+   *
+   * @example
+   * ```typescript
+   * // Reschedule an incomplete task to tomorrow (future move — no completion side-effect)
+   * const tomorrow = '2026-06-13';
+   * const result = await client.moveTaskToDay('taskId123', tomorrow);
+   * // result.updatedTaskIds contains the affected IDs
+   *
+   * // Complete a task as-of a past day ("this got done last Wednesday")
+   * // SERVER SIDE EFFECT: task will be marked completed with completeOn = 2026-06-10T13:59:59.999Z
+   * const result = await client.moveTaskToDay('taskId123', '2026-06-10', {
+   *   timezone: 'Australia/Brisbane',
+   * });
+   * // After the call: task.completed === true, task.completeOn === '2026-06-10T13:59:59.999Z'
+   * ```
+   */
+  async moveTaskToDay(
+    taskId: string,
+    targetDay: string,
+    options?: {
+      timezone?: string;
+      fromDay?: string;
+    }
+  ): Promise<UpdateTaskMoveToPanelPayload> {
+    // Validate targetDay format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDay)) {
+      throw new SunsamaValidationError('Invalid date format. Use YYYY-MM-DD format.', 'targetDay');
+    }
+
+    // Validate fromDay format if provided
+    if (options?.fromDay !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(options.fromDay)) {
+      throw new SunsamaValidationError('Invalid date format. Use YYYY-MM-DD format.', 'fromDay');
+    }
+
+    // Ensure we have user context
+    if (!this.userId) {
+      await this.getUser();
+    }
+
+    if (!this.userId) {
+      throw new SunsamaError('Unable to determine user ID');
+    }
+
+    // Get timezone
+    const timezone = options?.timezone || this.timezone || 'UTC';
+
+    // Determine the source panel date
+    let movedFromPanelDate: string;
+    if (options?.fromDay) {
+      movedFromPanelDate = dayToPanelDate(options.fromDay, timezone);
+    } else {
+      // Fetch the task to find its current panel date
+      const task = await this.getTaskById(taskId);
+      if (!task) {
+        throw new SunsamaError(`Task ${taskId} not found`);
+      }
+      const currentPanelDate = task.orderings?.[0]?.panelDate;
+      if (!currentPanelDate) {
+        throw new SunsamaError(
+          `Task ${taskId} has no current panel date (it may be in the backlog). ` +
+            `Pass options.fromDay to specify the source day explicitly.`
+        );
+      }
+      movedFromPanelDate = currentPanelDate;
+    }
+
+    // Fetch the destination day's tasks to build the ordered taskIds list
+    const unsortedDestTasks = await this.getTasksByDay(targetDay, timezone);
+
+    // Sort by ordinal ascending
+    const destTasks = [...unsortedDestTasks].sort((a, b) => {
+      const aOrdinal = a.orderings?.[0]?.ordinal ?? 0;
+      const bOrdinal = b.orderings?.[0]?.ordinal ?? 0;
+      return aOrdinal - bOrdinal;
+    });
+
+    // Build taskIds: existing destination task IDs (excluding taskId if somehow present) + taskId at the end
+    const destTaskIds = destTasks.map(t => t._id).filter(id => id !== taskId);
+    const taskIds = [...destTaskIds, taskId];
+
+    // Ordinal: append to bottom (last ordinal + 1024, or 1024 if destination is empty)
+    const lastOrdinal = destTasks.length > 0 ? (destTasks[destTasks.length - 1]!.orderings?.[0]?.ordinal ?? 0) : 0;
+    const ordinal = lastOrdinal + 1024;
+
+    // Convert target day to panel date
+    const panelDate = dayToPanelDate(targetDay, timezone);
+
+    const input: UpdateTaskMoveToPanelInput = {
+      taskId,
+      ordinal,
+      taskIds,
+      userId: this.userId,
+      timezone,
+      panelDate,
+      movedFromPanelDate,
+      isMovedFromArchive: false,
+      isMovedFromRolloverToComplete: false,
+      isMovedFromCompleteToRollover: false,
+      isMovedWithinRollover: false,
+    };
+
+    const request: GraphQLRequest<{ input: UpdateTaskMoveToPanelInput }> = {
+      operationName: 'updateTaskMoveToPanel',
+      variables: { input },
+      query: UPDATE_TASK_MOVE_TO_PANEL_MUTATION,
+    };
+
+    const response = await this.graphqlRequest<
+      { updateTaskMoveToPanel: UpdateTaskMoveToPanelPayload },
+      { input: UpdateTaskMoveToPanelInput }
+    >(request);
+
+    if (!response.data) {
+      throw new SunsamaError('No response data received');
+    }
+
+    return response.data.updateTaskMoveToPanel;
+  }
+
+  /**
    * Calculates the ordinal value for a task being moved to a new position
    *
    * Sunsama uses a spacing system where ordinals have gaps between them

@@ -856,6 +856,76 @@ describe('SunsamaClient', () => {
       );
     });
 
+    it('should have moveTaskToDay method', () => {
+      const client = new SunsamaClient();
+
+      expect(typeof client.moveTaskToDay).toBe('function');
+    });
+
+    it('should throw error when calling moveTaskToDay without authentication', async () => {
+      const client = new SunsamaClient();
+
+      await expect(client.moveTaskToDay('685022edbdef77163d659d4a', '2025-01-12')).rejects.toThrow();
+    });
+
+    it('should validate targetDay format in moveTaskToDay', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = 'test-task-id';
+
+      await expect(client.moveTaskToDay(validTaskId, 'invalid-date')).rejects.toThrow(
+        'Invalid date format'
+      );
+
+      await expect(client.moveTaskToDay(validTaskId, '2025/01/12')).rejects.toThrow(
+        'Invalid date format'
+      );
+
+      await expect(client.moveTaskToDay(validTaskId, '01-12-2025')).rejects.toThrow(
+        'Invalid date format'
+      );
+    });
+
+    it('should validate fromDay format in moveTaskToDay when provided', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = 'test-task-id';
+
+      await expect(
+        client.moveTaskToDay(validTaskId, '2025-01-12', { fromDay: 'bad-date' })
+      ).rejects.toThrow('Invalid date format');
+
+      await expect(
+        client.moveTaskToDay(validTaskId, '2025-01-12', { fromDay: '2025/01/11' })
+      ).rejects.toThrow('Invalid date format');
+    });
+
+    it('should accept valid parameters in moveTaskToDay (fails at GraphQL level without auth)', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = '685022edbdef77163d659d4a';
+
+      // Valid dates — should pass validation but fail at GraphQL (unauthorized)
+      await expect(client.moveTaskToDay(validTaskId, '2025-01-12')).rejects.toThrow(
+        'GraphQL errors: Unauthorized'
+      );
+    });
+
+    it('should accept timezone option in moveTaskToDay', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = '685022edbdef77163d659d4a';
+
+      await expect(
+        client.moveTaskToDay(validTaskId, '2025-01-12', { timezone: 'Australia/Brisbane' })
+      ).rejects.toThrow('GraphQL errors: Unauthorized');
+    });
+
+    it('should accept fromDay option in moveTaskToDay', async () => {
+      const client = new SunsamaClient({ sessionToken: 'test-token' });
+      const validTaskId = '685022edbdef77163d659d4a';
+
+      await expect(
+        client.moveTaskToDay(validTaskId, '2025-01-12', { fromDay: '2025-01-11' })
+      ).rejects.toThrow('GraphQL errors: Unauthorized');
+    });
+
     it('should have createCalendarEvent method', () => {
       const client = new SunsamaClient();
 
